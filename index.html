@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4a90d9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Receipt Price Search</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 16px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.4rem;
+            margin-bottom: 16px;
+            color: #333;
+        }
+        .search-box {
+            width: 100%;
+            padding: 12px 16px;
+            font-size: 1rem;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .search-box:focus { border-color: #4a90d9; }
+        .status {
+            margin: 12px 0;
+            font-size: 0.85rem;
+            color: #666;
+        }
+        .results { margin-top: 16px; }
+        .product-card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .product-name {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #222;
+            margin-bottom: 8px;
+        }
+        .price-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            border-bottom: 1px solid #f0f0f0;
+            font-size: 0.9rem;
+        }
+        .price-row:last-child { border-bottom: none; }
+        .store { color: #555; font-weight: 500; }
+        .price { color: #2a7a2a; font-weight: 600; }
+        .date { color: #888; font-size: 0.8rem; }
+        .no-results {
+            text-align: center;
+            color: #888;
+            margin-top: 40px;
+            font-size: 0.95rem;
+        }
+        .hint {
+            color: #999;
+            font-size: 0.85rem;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Receipt Price Search</h1>
+    <input type="text" class="search-box" id="search" placeholder="Type product name (e.g. colgate, strawberries, noodle)..." autofocus>
+    <div class="status" id="status">Loading receipts...</div>
+    <div class="hint" id="hint"></div>
+    <div class="results" id="results"></div>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('./sw.js');
+        }
+
+        let allItems = [];
+
+        async function loadReceipts() {
+            try {
+                const resp = await fetch('https://gist.githubusercontent.com/Simon-office-hk99/ad915999b3213f53cfaba93060d2351e/raw/receipts.json');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const receipts = await resp.json();
+
+                for (const receipt of receipts) {
+                    const store = receipt.store || 'Unknown';
+                    const date = receipt.date || '';
+                    for (const item of (receipt.items || [])) {
+                        allItems.push({
+                            name: item.name || '',
+                            full_name: item.full_name || item.name || '',
+                            price: item.price,
+                            store: store,
+                            date: date,
+                        });
+                    }
+                }
+
+                const totalItems = allItems.length;
+                const totalReceipts = receipts.length;
+                document.getElementById('status').textContent =
+                    `Loaded ${totalItems} items from ${totalReceipts} receipt(s)`;
+                document.getElementById('hint').textContent =
+                    'Start typing to search...';
+            } catch (e) {
+                document.getElementById('status').textContent =
+                    `Error loading receipts: ${e.message}`;
+            }
+        }
+
+        function search(query) {
+            const resultsDiv = document.getElementById('results');
+            const hintDiv = document.getElementById('hint');
+
+            if (!query || query.length < 2) {
+                resultsDiv.innerHTML = '';
+                hintDiv.textContent = query.length === 0 ? 'Start typing to search...' : 'Type at least 2 characters...';
+                return;
+            }
+            hintDiv.textContent = '';
+
+            const q = query.toLowerCase();
+            const matches = allItems.filter(item =>
+                item.full_name.toLowerCase().includes(q) ||
+                item.name.toLowerCase().includes(q)
+            );
+
+            if (matches.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-results">No matching products found</div>';
+                return;
+            }
+
+            const grouped = {};
+            for (const item of matches) {
+                const key = item.full_name.toUpperCase();
+                if (!grouped[key]) {
+                    grouped[key] = { full_name: item.full_name, stores: {} };
+                }
+                const storeKey = item.store;
+                if (!grouped[key].stores[storeKey] || item.date > grouped[key].stores[storeKey].date) {
+                    grouped[key].stores[storeKey] = { price: item.price, date: item.date };
+                }
+            }
+
+            let html = '';
+            for (const [key, product] of Object.entries(grouped)) {
+                const entries = Object.entries(product.stores)
+                    .map(([store, data]) => ({ store, ...data }))
+                    .sort((a, b) => a.price - b.price);
+
+                html += `<div class="product-card">`;
+                html += `<div class="product-name">${escapeHtml(product.full_name)}</div>`;
+                for (const entry of entries) {
+                    html += `<div class="price-row">
+                        <span class="store">${escapeHtml(entry.store)}</span>
+                        <span class="price">&pound;${entry.price.toFixed(2)}</span>
+                        <span class="date">${entry.date || 'N/A'}</span>
+                    </div>`;
+                }
+                html += `</div>`;
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        document.getElementById('search').addEventListener('input', (e) => {
+            search(e.target.value.trim());
+        });
+
+        loadReceipts();
+    </script>
+</body>
+</html>
