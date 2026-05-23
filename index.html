@@ -10,6 +10,7 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
+    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -76,16 +77,112 @@
             font-size: 0.85rem;
             margin-top: 8px;
         }
+        #login-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 60vh;
+        }
+        #login-section h1 {
+            margin-bottom: 24px;
+        }
+        #login-error {
+            color: #c00;
+            margin-top: 16px;
+            font-size: 0.9rem;
+        }
+        #app-section { display: none; }
+        .user-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            font-size: 0.8rem;
+            color: #888;
+        }
+        .logout-btn {
+            background: none;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            color: #666;
+            cursor: pointer;
+        }
+        .logout-btn:hover { background: #eee; }
     </style>
 </head>
 <body>
-    <h1>Receipt Price Search</h1>
-    <input type="text" class="search-box" id="search" placeholder="Type product name (e.g. colgate, strawberries, noodle)..." autofocus>
-    <div class="status" id="status">Loading receipts...</div>
-    <div class="hint" id="hint"></div>
-    <div class="results" id="results"></div>
+    <div id="login-section">
+        <h1>Receipt Price Search</h1>
+        <div id="g_id_onload"
+             data-client_id="603358682422-ntunhrdkspak3ck58kdj3eo1rdjdhfk4.apps.googleusercontent.com"
+             data-callback="handleCredentialResponse"
+             data-auto_prompt="false">
+        </div>
+        <div class="g_id_signin"
+             data-type="standard"
+             data-size="large"
+             data-theme="outline"
+             data-text="sign_in_with"
+             data-shape="rectangular">
+        </div>
+        <div id="login-error"></div>
+    </div>
+
+    <div id="app-section">
+        <div class="user-bar">
+            <span id="user-email"></span>
+            <button class="logout-btn" onclick="logout()">Sign out</button>
+        </div>
+        <h1>Receipt Price Search</h1>
+        <input type="text" class="search-box" id="search" placeholder="Type product name (e.g. colgate, strawberries, noodle)...">
+        <div class="status" id="status">Loading receipts...</div>
+        <div class="hint" id="hint"></div>
+        <div class="results" id="results"></div>
+    </div>
 
     <script>
+        const ALLOWED_EMAILS = ['simon.office.hk99@gmail.com'];
+
+        function handleCredentialResponse(response) {
+            const payload = JSON.parse(atob(response.credential.split('.')[1]));
+            const email = payload.email;
+
+            if (ALLOWED_EMAILS.includes(email.toLowerCase())) {
+                localStorage.setItem('receipt_user', email);
+                showApp(email);
+            } else {
+                document.getElementById('login-error').textContent =
+                    'Access denied. This account is not authorised.';
+            }
+        }
+
+        function showApp(email) {
+            document.getElementById('login-section').style.display = 'none';
+            document.getElementById('app-section').style.display = 'block';
+            document.getElementById('user-email').textContent = email;
+            document.getElementById('search').focus();
+            loadReceipts();
+        }
+
+        function logout() {
+            localStorage.removeItem('receipt_user');
+            google.accounts.id.disableAutoSelect();
+            document.getElementById('app-section').style.display = 'none';
+            document.getElementById('login-section').style.display = 'flex';
+        }
+
+        // Auto-login if previously authenticated
+        window.addEventListener('load', () => {
+            const saved = localStorage.getItem('receipt_user');
+            if (saved && ALLOWED_EMAILS.includes(saved.toLowerCase())) {
+                showApp(saved);
+            }
+        });
+
+        // Service worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js');
         }
@@ -98,6 +195,7 @@
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const receipts = await resp.json();
 
+                allItems = [];
                 for (const receipt of receipts) {
                     const store = receipt.store || 'Unknown';
                     const date = receipt.date || '';
@@ -112,10 +210,8 @@
                     }
                 }
 
-                const totalItems = allItems.length;
-                const totalReceipts = receipts.length;
                 document.getElementById('status').textContent =
-                    `Loaded ${totalItems} items from ${totalReceipts} receipt(s)`;
+                    `Loaded ${allItems.length} items from ${receipts.length} receipt(s)`;
                 document.getElementById('hint').textContent =
                     'Start typing to search...';
             } catch (e) {
@@ -188,8 +284,6 @@
         document.getElementById('search').addEventListener('input', (e) => {
             search(e.target.value.trim());
         });
-
-        loadReceipts();
     </script>
 </body>
 </html>
