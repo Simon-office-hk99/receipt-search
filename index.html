@@ -200,10 +200,14 @@
                     const store = receipt.store || 'Unknown';
                     const date = receipt.date || '';
                     for (const item of (receipt.items || [])) {
+                        const qty = item.quantity || 1;
+                        const unitPrice = item.unit_price || +(item.price / qty).toFixed(2);
                         allItems.push({
                             name: item.name || '',
                             full_name: item.full_name || item.name || '',
                             price: item.price,
+                            unit_price: unitPrice,
+                            quantity: qty,
                             store: store,
                             date: date,
                         });
@@ -250,7 +254,7 @@
                 }
                 const storeKey = item.store;
                 if (!grouped[key].stores[storeKey] || item.date > grouped[key].stores[storeKey].date) {
-                    grouped[key].stores[storeKey] = { price: item.price, date: item.date };
+                    grouped[key].stores[storeKey] = { unit_price: item.unit_price, quantity: item.quantity, price: item.price, date: item.date };
                 }
             }
 
@@ -258,14 +262,15 @@
             for (const [key, product] of Object.entries(grouped)) {
                 const entries = Object.entries(product.stores)
                     .map(([store, data]) => ({ store, ...data }))
-                    .sort((a, b) => a.price - b.price);
+                    .sort((a, b) => a.unit_price - b.unit_price);
 
                 html += `<div class="product-card">`;
                 html += `<div class="product-name">${escapeHtml(product.full_name)}</div>`;
                 for (const entry of entries) {
+                    const qtyInfo = entry.quantity > 1 ? ` (x${entry.quantity} = &pound;${entry.price.toFixed(2)})` : '';
                     html += `<div class="price-row">
                         <span class="store">${escapeHtml(entry.store)}</span>
-                        <span class="price">&pound;${entry.price.toFixed(2)}</span>
+                        <span class="price">&pound;${entry.unit_price.toFixed(2)}${qtyInfo}</span>
                         <span class="date">${entry.date || 'N/A'}</span>
                     </div>`;
                 }
