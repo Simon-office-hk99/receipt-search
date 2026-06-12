@@ -132,7 +132,8 @@
             navigator.serviceWorker.register('./sw.js');
         }
 
-        const CATEGORIES = {
+        // Fallback regex for items without a stored category
+        const CATEGORY_FALLBACK = {
             'Meat & Seafood': /\b(beef|pork|chicken|prawns?|shrimp|salmon|fish|meatball|tendon|sausage|ribs|ham|mince|pluma|iberico|seafood|ribeye|steak|prwn|tempura|crab)\b/i,
             'Noodles & Rice': /\b(noodle|ramen|udon|vermicelli|soba|pho|yee mein|e-fu|chapagetti|jjajang|ramyun)\b/i,
             'Snacks & Crisps': /\b(chips?|crisps?|cookie|biscuit|wafer|mochi|snack|toffee|pringles|pastilles|nugget|walkers|kettle|grafschafter|sticks|choco pie|mccoy|fruitella|variety)\b/i,
@@ -142,16 +143,14 @@
             'Drinks': /\b(tea|cola|juice|lemonade|drink|water|press[eé]|sangaria|elderflower)\b/i,
             'Bakery & Dessert': /\b(bread|cake|pie|trifle|cheesecake|loaf|battenberg|madeleines?|pizza|waffle)\b/i,
             'Condiments & Cooking': /\b(sauce|oil|mayonnaise|starch|flour|sugar|seasoning|soup mix|vinegar|garlic|bean garlic|pickled|ginger)\b/i,
-            'Health & Personal': /\b(vitamin|toothpaste|collagen|tablet|capsule|hand wash|toner|pantyliner|turmeric|glucosamine|centrum|multivitamin)\b/i,
-            'Household': /\b(toilet|baking paper|clean|gel)\b/i,
-            'Asian Groceries': /\b(tofu|beancurd|seaweed|oolong|haw flakes|tapioca|barley|rock sugar)\b/i,
+            'Health & Household': /\b(vitamin|toothpaste|collagen|tablet|capsule|hand wash|toner|pantyliner|turmeric|glucosamine|centrum|multivitamin|toilet|baking paper|clean|gel)\b/i,
         };
 
         let allItems = [];
         let activeCategory = 'all';
 
         function categorize(name) {
-            for (const [cat, regex] of Object.entries(CATEGORIES)) {
+            for (const [cat, regex] of Object.entries(CATEGORY_FALLBACK)) {
                 if (regex.test(name)) return cat;
             }
             return 'Other';
@@ -162,7 +161,11 @@
             for (const item of allItems) {
                 counts[item.category] = (counts[item.category] || 0) + 1;
             }
-            const cats = Object.keys(CATEGORIES).filter(c => counts[c]);
+            const allCats = Object.keys(counts).filter(c => c !== 'all' && counts[c]);
+            // Sort: known categories first in order, then Others at end
+            const ORDER = ['Meat & Seafood','Noodles & Rice','Snacks & Crisps','Frozen','Dairy & Eggs','Fruit & Veg','Drinks','Bakery & Dessert','Condiments & Cooking','Health & Household'];
+            const cats = ORDER.filter(c => allCats.includes(c));
+            for (const c of allCats) { if (!cats.includes(c) && c !== 'Other') cats.push(c); }
             if (counts['Other']) cats.push('Other');
 
             let html = `<span class="cat-chip active" data-cat="all">All<span class="count">${counts.all}</span></span>`;
@@ -311,7 +314,7 @@
                             price: item.unit_price || item.price,
                             store: store,
                             date: date,
-                            category: categorize(fullName),
+                            category: item.category || categorize(fullName),
                         });
                     }
                 }
