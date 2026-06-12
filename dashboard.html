@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4a90d9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <title>Spending Dashboard</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 16px;
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 {
+            font-size: 1.4rem;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        .nav-bar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #4a90d9;
+            background: #fff;
+            border: 1px solid #ddd;
+            transition: all 0.2s;
+        }
+        .nav-link:hover { border-color: #4a90d9; }
+        .nav-link.active {
+            background: #4a90d9;
+            color: #fff;
+            border-color: #4a90d9;
+        }
+        .summary-cards {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 24px;
+        }
+        .card {
+            background: #fff;
+            border-radius: 8px;
+            padding: 16px;
+            flex: 1;
+            min-width: 140px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            text-align: center;
+        }
+        .card-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #4a90d9;
+        }
+        .card-label {
+            font-size: 0.8rem;
+            color: #666;
+            margin-top: 4px;
+        }
+        .section {
+            background: #fff;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .section-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 16px;
+        }
+        .chart-container {
+            position: relative;
+            height: 350px;
+        }
+        .controls {
+            display: flex;
+            gap: 12px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+            align-items: center;
+        }
+        .controls label {
+            font-size: 0.85rem;
+            color: #555;
+            font-weight: 500;
+        }
+        .controls select {
+            padding: 6px 10px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            background: #fff;
+            outline: none;
+        }
+        .controls select:focus { border-color: #4a90d9; }
+        .table-wrapper {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.85rem;
+        }
+        th {
+            text-align: left;
+            padding: 10px 8px;
+            border-bottom: 2px solid #eee;
+            color: #555;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        td {
+            padding: 10px 8px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        tr:hover td { background: #f9f9f9; }
+        .amount { color: #2a7a2a; font-weight: 600; }
+        .stores-cell {
+            font-size: 0.8rem;
+            color: #666;
+        }
+        .status {
+            font-size: 0.85rem;
+            color: #666;
+            margin-bottom: 16px;
+        }
+        @media (max-width: 600px) {
+            .chart-container { height: 280px; }
+            .card { min-width: 45%; }
+        }
+    </style>
+</head>
+<body>
+    <h1>Spending Dashboard</h1>
+    <nav class="nav-bar">
+        <a href="./index.html" class="nav-link">Price Search</a>
+        <a href="./dashboard.html" class="nav-link active">Dashboard</a>
+    </nav>
+
+    <div class="status" id="status">Loading receipts...</div>
+
+    <div class="summary-cards" id="summary">
+        <div class="card"><div class="card-value" id="totalSpend">-</div><div class="card-label">Total Spend</div></div>
+        <div class="card"><div class="card-value" id="totalReceipts">-</div><div class="card-label">Receipts</div></div>
+        <div class="card"><div class="card-value" id="totalStores">-</div><div class="card-label">Stores</div></div>
+        <div class="card"><div class="card-value" id="avgTrip">-</div><div class="card-label">Avg / Trip</div></div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Monthly Spending by Store</div>
+        <div class="controls">
+            <label>Show top:
+                <select id="topStores">
+                    <option value="5" selected>5 stores</option>
+                    <option value="10">10 stores</option>
+                    <option value="15">15 stores</option>
+                </select>
+            </label>
+        </div>
+        <div class="chart-container">
+            <canvas id="trendChart"></canvas>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Top Products</div>
+        <div class="controls">
+            <label>Sort by:
+                <select id="sortBy">
+                    <option value="amount">Total Amount</option>
+                    <option value="quantity">Total Quantity</option>
+                </select>
+            </label>
+            <label>Period:
+                <select id="period"></select>
+            </label>
+        </div>
+        <div class="table-wrapper">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>Product</th>
+                        <th>Qty</th>
+                        <th>Total</th>
+                        <th>Avg Price</th>
+                        <th>Store(s)</th>
+                    </tr>
+                </thead>
+                <tbody id="productsBody"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const STORE_COLORS = [
+            '#4a90d9', '#e74c3c', '#2ecc71', '#f39c12', '#9b59b6',
+            '#1abc9c', '#e67e22', '#34495e', '#e91e63', '#607d8b'
+        ];
+
+        let receipts = [];
+        let trendChart = null;
+
+        function normalizeStore(name) {
+            const map = { 'Marks & Spencer': 'M&S', 'marks & spencer': 'M&S' };
+            return map[name] || name;
+        }
+
+        function currentYear() {
+            return new Date().getFullYear().toString();
+        }
+
+        function filterByPeriod(data, period) {
+            if (period === 'all') return data;
+            return data.filter(r => r.date && r.date.startsWith(period));
+        }
+
+        function buildPeriodOptions() {
+            const select = document.getElementById('period');
+            const months = new Set();
+            const years = new Set();
+            for (const r of receipts) {
+                if (r.date) {
+                    years.add(r.date.substring(0, 4));
+                    months.add(r.date.substring(0, 7));
+                }
+            }
+            const sortedYears = [...years].sort().reverse();
+            const sortedMonths = [...months].sort().reverse();
+
+            let html = '';
+            const cy = currentYear();
+            const hasCurrentYear = sortedYears.includes(cy);
+            if (hasCurrentYear) {
+                html += `<option value="${cy}" selected>${cy}</option>`;
+            }
+            html += '<option value="all">All Time</option>';
+            for (const y of sortedYears) {
+                if (y !== cy) html += `<option value="${y}">${y}</option>`;
+            }
+            for (const m of sortedMonths) {
+                const label = new Date(m + '-01').toLocaleDateString('en-GB', { year: 'numeric', month: 'short' });
+                html += `<option value="${m}">${label}</option>`;
+            }
+            select.innerHTML = html;
+            if (!hasCurrentYear && sortedYears.length > 0) {
+                select.value = sortedYears[0];
+            }
+        }
+
+        function updateSummary(period) {
+            const filtered = filterByPeriod(receipts, period);
+            const totalSpend = filtered.reduce((s, r) => s + (r.total || 0), 0);
+            const stores = new Set(filtered.map(r => normalizeStore(r.store)));
+            const count = filtered.length;
+
+            document.getElementById('totalSpend').textContent = '£' + totalSpend.toFixed(2);
+            document.getElementById('totalReceipts').textContent = count;
+            document.getElementById('totalStores').textContent = stores.size;
+            document.getElementById('avgTrip').textContent = count > 0
+                ? '£' + (totalSpend / count).toFixed(2)
+                : '-';
+        }
+
+        function renderTrendChart() {
+            const monthlyData = {};
+            for (const r of receipts) {
+                const month = r.date ? r.date.substring(0, 7) : 'Unknown';
+                const store = normalizeStore(r.store || 'Unknown');
+                if (!monthlyData[month]) monthlyData[month] = {};
+                monthlyData[month][store] = (monthlyData[month][store] || 0) + (r.total || 0);
+            }
+
+            const months = Object.keys(monthlyData).sort();
+            const allStores = [...new Set(months.flatMap(m => Object.keys(monthlyData[m])))];
+            // Rank stores by total spend and keep top 5
+            const storeTotals = allStores.map(s => ({
+                store: s,
+                total: months.reduce((sum, m) => sum + (monthlyData[m][s] || 0), 0)
+            }));
+            storeTotals.sort((a, b) => b.total - a.total);
+            const topN = parseInt(document.getElementById('topStores').value) || 5;
+            const topStores = storeTotals.slice(0, topN).map(s => s.store);
+            const storeColorMap = {};
+            topStores.forEach((s, i) => { storeColorMap[s] = STORE_COLORS[i % STORE_COLORS.length]; });
+
+            const datasets = topStores.map(store => ({
+                label: store,
+                data: months.map(m => +(monthlyData[m][store] || 0).toFixed(2)),
+                borderColor: storeColorMap[store],
+                backgroundColor: storeColorMap[store],
+                tension: 0.3,
+                pointRadius: 4,
+                pointHoverRadius: 6,
+                fill: false,
+            }));
+
+            const labels = months.map(m => {
+                const d = new Date(m + '-01');
+                return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short' });
+            });
+
+            if (trendChart) trendChart.destroy();
+            trendChart = new Chart(document.getElementById('trendChart'), {
+                type: 'line',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: { mode: 'index', intersect: false },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: £${ctx.raw.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {},
+                        y: {
+                            beginAtZero: true,
+                            ticks: { callback: v => '£' + v }
+                        }
+                    }
+                }
+            });
+        }
+
+        function renderTopProducts() {
+            const sortBy = document.getElementById('sortBy').value;
+            const period = document.getElementById('period').value;
+            const filtered = filterByPeriod(receipts, period);
+
+            const products = {};
+            for (const r of filtered) {
+                for (const item of (r.items || [])) {
+                    const key = (item.full_name || item.name || '').toUpperCase();
+                    if (!key) continue;
+                    if (!products[key]) {
+                        products[key] = {
+                            name: item.full_name || item.name,
+                            totalQty: 0,
+                            totalSpent: 0,
+                            prices: [],
+                            stores: new Set()
+                        };
+                    }
+                    const qty = item.quantity || 1;
+                    products[key].totalQty += qty;
+                    products[key].totalSpent += item.price || 0;
+                    products[key].prices.push(item.unit_price || item.price || 0);
+                    products[key].stores.add(normalizeStore(r.store));
+                }
+            }
+
+            const arr = Object.values(products);
+            if (sortBy === 'quantity') {
+                arr.sort((a, b) => b.totalQty - a.totalQty);
+            } else {
+                arr.sort((a, b) => b.totalSpent - a.totalSpent);
+            }
+
+            const top = arr.slice(0, 20);
+            const tbody = document.getElementById('productsBody');
+            if (top.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#888;">No data for selected period</td></tr>';
+                return;
+            }
+
+            tbody.innerHTML = top.map((p, i) => {
+                const avg = p.prices.length > 0 ? p.prices.reduce((a, b) => a + b, 0) / p.prices.length : 0;
+                return `<tr>
+                    <td>${i + 1}</td>
+                    <td>${escapeHtml(p.name)}</td>
+                    <td>${p.totalQty}</td>
+                    <td class="amount">£${p.totalSpent.toFixed(2)}</td>
+                    <td>£${avg.toFixed(2)}</td>
+                    <td class="stores-cell">${[...p.stores].join(', ')}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function refresh() {
+            const period = document.getElementById('period').value;
+            updateSummary(period);
+            renderTopProducts();
+        }
+
+        async function init() {
+            try {
+                const resp = await fetch('https://gist.githubusercontent.com/Simon-office-hk99/ad915999b3213f53cfaba93060d2351e/raw/receipts.json');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                receipts = await resp.json();
+
+                document.getElementById('status').textContent =
+                    `${receipts.length} receipts loaded`;
+
+                buildPeriodOptions();
+                updateSummary(document.getElementById('period').value);
+                renderTrendChart();
+                renderTopProducts();
+            } catch (e) {
+                document.getElementById('status').textContent = `Error: ${e.message}`;
+            }
+        }
+
+        document.getElementById('sortBy').addEventListener('change', renderTopProducts);
+        document.getElementById('period').addEventListener('change', refresh);
+        document.getElementById('topStores').addEventListener('change', renderTrendChart);
+
+        init();
+    </script>
+</body>
+</html>
