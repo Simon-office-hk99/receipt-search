@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#4a90d9">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>Receipt History</title>
+    <link rel="manifest" href="./manifest.json">
+    <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
+    <link rel="apple-touch-icon" href="./icon-192.png">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f5f5f5;
+            padding: 16px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 { font-size: 1.4rem; margin-bottom: 12px; color: #333; }
+        .nav-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+        .nav-link {
+            padding: 8px 16px; border-radius: 6px; text-decoration: none;
+            font-size: 0.9rem; font-weight: 500; color: #4a90d9;
+            background: #fff; border: 1px solid #ddd; transition: all 0.2s;
+        }
+        .nav-link:hover { border-color: #4a90d9; }
+        .nav-link.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+        .controls {
+            display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; align-items: center;
+        }
+        .controls label { font-size: 0.85rem; color: #555; font-weight: 500; }
+        .controls select, .controls input {
+            padding: 6px 10px; border: 1px solid #ddd; border-radius: 6px;
+            font-size: 0.85rem; background: #fff; outline: none;
+        }
+        .controls select:focus, .controls input:focus { border-color: #4a90d9; }
+        .status { font-size: 0.85rem; color: #666; margin-bottom: 16px; }
+        .receipt-card {
+            background: #fff; border-radius: 8px; padding: 14px 16px;
+            margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); cursor: pointer;
+        }
+        .receipt-header {
+            display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px;
+        }
+        .receipt-store { font-weight: 600; font-size: 0.95rem; color: #222; }
+        .receipt-date { font-size: 0.85rem; color: #666; }
+        .receipt-meta { font-size: 0.8rem; color: #888; }
+        .receipt-total { font-weight: 600; color: #2a7a2a; font-size: 0.95rem; }
+        .receipt-detail { display: none; margin-top: 12px; border-top: 1px solid #eee; padding-top: 10px; }
+        .receipt-detail.open { display: block; }
+        .item-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 5px 0; font-size: 0.8rem; border-bottom: 1px solid #f8f8f8;
+        }
+        .item-row:last-child { border-bottom: none; }
+        .item-name { color: #333; flex: 1; margin-right: 8px; }
+        .item-qty { color: #888; font-size: 0.75rem; margin-right: 8px; }
+        .item-price { color: #2a7a2a; font-weight: 500; white-space: nowrap; }
+        .item-cat { font-size: 0.7rem; color: #999; background: #f0f0f0; padding: 2px 6px; border-radius: 10px; margin-left: 6px; }
+        .no-results { text-align: center; color: #888; margin-top: 40px; font-size: 0.95rem; }
+    </style>
+</head>
+<body>
+    <h1>Receipt History</h1>
+    <nav class="nav-bar">
+        <a href="./index.html" class="nav-link">Price Search</a>
+        <a href="./dashboard.html" class="nav-link">Dashboard</a>
+        <a href="./history.html" class="nav-link active">History</a>
+    </nav>
+
+    <div class="controls">
+        <label>Store:
+            <select id="storeFilter"></select>
+        </label>
+        <label>From:
+            <input type="date" id="dateFrom">
+        </label>
+        <label>To:
+            <input type="date" id="dateTo">
+        </label>
+    </div>
+
+    <div class="status" id="status">Loading receipts...</div>
+    <div id="results"></div>
+
+    <script>
+        let receipts = [];
+
+        function buildStoreOptions() {
+            const stores = new Set(receipts.map(r => r.store || 'Unknown'));
+            const select = document.getElementById('storeFilter');
+            let html = '<option value="all">All Stores</option>';
+            for (const s of [...stores].sort()) {
+                html += `<option value="${s}">${s}</option>`;
+            }
+            select.innerHTML = html;
+        }
+
+        function setDefaultDates() {
+            if (receipts.length === 0) return;
+            const dates = receipts.map(r => r.date).filter(Boolean).sort();
+            document.getElementById('dateFrom').value = dates[0] || '';
+            document.getElementById('dateTo').value = dates[dates.length - 1] || '';
+        }
+
+        function filterReceipts() {
+            const store = document.getElementById('storeFilter').value;
+            const from = document.getElementById('dateFrom').value;
+            const to = document.getElementById('dateTo').value;
+
+            let filtered = receipts;
+            if (store !== 'all') {
+                filtered = filtered.filter(r => r.store === store);
+            }
+            if (from) {
+                filtered = filtered.filter(r => r.date >= from);
+            }
+            if (to) {
+                filtered = filtered.filter(r => r.date <= to);
+            }
+
+            // Sort by date descending
+            filtered.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+            renderReceipts(filtered);
+        }
+
+        function renderReceipts(list) {
+            const resultsDiv = document.getElementById('results');
+
+            if (list.length === 0) {
+                resultsDiv.innerHTML = '<div class="no-results">No receipts found</div>';
+                document.getElementById('status').textContent = '0 receipts';
+                return;
+            }
+
+            const totalSpend = list.reduce((s, r) => s + (r.total || 0), 0);
+            document.getElementById('status').textContent =
+                `${list.length} receipt(s) — Total: £${totalSpend.toFixed(2)}`;
+
+            let html = '';
+            for (const r of list) {
+                const itemCount = (r.items || []).length;
+                html += `<div class="receipt-card" onclick="this.querySelector('.receipt-detail').classList.toggle('open')">`;
+                html += `<div class="receipt-header">`;
+                html += `<div><span class="receipt-store">${escapeHtml(r.store || 'Unknown')}</span> <span class="receipt-date">${r.date || 'N/A'}</span></div>`;
+                html += `<div><span class="receipt-meta">${itemCount} items</span> <span class="receipt-total">£${(r.total || 0).toFixed(2)}</span></div>`;
+                html += `</div>`;
+                html += `<div class="receipt-detail">`;
+                for (const item of (r.items || [])) {
+                    const name = item.full_name || item.name || '';
+                    const price = item.price || 0;
+                    const qty = item.quantity || 1;
+                    const cat = item.category || '';
+                    const qtyLabel = qty > 1 ? `x${qty}` : '';
+                    html += `<div class="item-row">`;
+                    html += `<span class="item-name">${escapeHtml(name)}</span>`;
+                    if (qtyLabel) html += `<span class="item-qty">${qtyLabel}</span>`;
+                    if (cat) html += `<span class="item-cat">${cat}</span>`;
+                    html += `<span class="item-price">£${price.toFixed(2)}</span>`;
+                    html += `</div>`;
+                }
+                html += `</div>`;
+                html += `</div>`;
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function init() {
+            try {
+                const resp = await fetch('https://gist.githubusercontent.com/Simon-office-hk99/ad915999b3213f53cfaba93060d2351e/raw/receipts.json');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                receipts = await resp.json();
+
+                document.getElementById('status').textContent = `${receipts.length} receipts loaded`;
+                buildStoreOptions();
+                setDefaultDates();
+                filterReceipts();
+            } catch (e) {
+                document.getElementById('status').textContent = `Error: ${e.message}`;
+            }
+        }
+
+        document.getElementById('storeFilter').addEventListener('change', filterReceipts);
+        document.getElementById('dateFrom').addEventListener('change', filterReceipts);
+        document.getElementById('dateTo').addEventListener('change', filterReceipts);
+
+        init();
+    </script>
+</body>
+</html>
