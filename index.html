@@ -46,6 +46,7 @@
             padding: 16px;
             margin-bottom: 12px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            cursor: pointer;
         }
         .product-name {
             font-weight: 600;
@@ -64,7 +65,15 @@
         .price-row:last-child { border-bottom: none; }
         .store { color: #555; font-weight: 500; }
         .price { color: #2a7a2a; font-weight: 600; }
+        .trend-up { color: #e74c3c; font-size: 0.8rem; font-weight: 500; }
+        .trend-down { color: #2a7a2a; font-size: 0.8rem; font-weight: 500; }
         .date { color: #888; font-size: 0.8rem; }
+        .expand-hint { font-size: 0.75rem; color: #aaa; text-align: right; margin-top: 6px; }
+        .history { display: none; margin-top: 10px; border-top: 1px solid #eee; padding-top: 10px; }
+        .history.open { display: block; }
+        .history-title { font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 6px; }
+        .history-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; color: #666; border-bottom: 1px solid #f8f8f8; }
+        .history-row:last-child { border-bottom: none; }
         .no-results {
             text-align: center;
             color: #888;
@@ -172,6 +181,7 @@
                 return;
             }
 
+            // Group by product, keep ALL entries per store (sorted newest first)
             const grouped = {};
             for (const item of matches) {
                 const key = item.full_name.toUpperCase();
@@ -179,26 +189,65 @@
                     grouped[key] = { full_name: item.full_name, stores: {} };
                 }
                 const storeKey = item.store;
-                if (!grouped[key].stores[storeKey] || item.date > grouped[key].stores[storeKey].date) {
-                    grouped[key].stores[storeKey] = { price: item.price, date: item.date };
+                if (!grouped[key].stores[storeKey]) {
+                    grouped[key].stores[storeKey] = [];
+                }
+                grouped[key].stores[storeKey].push({ price: item.price, date: item.date });
+            }
+
+            // Sort each store's entries by date descending
+            for (const product of Object.values(grouped)) {
+                for (const entries of Object.values(product.stores)) {
+                    entries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
                 }
             }
 
             let html = '';
             for (const [key, product] of Object.entries(grouped)) {
-                const entries = Object.entries(product.stores)
-                    .map(([store, data]) => ({ store, ...data }))
-                    .sort((a, b) => a.price - b.price);
+                const storeEntries = Object.entries(product.stores)
+                    .map(([store, entries]) => ({ store, latest: entries[0], prev: entries[1] || null, all: entries }))
+                    .sort((a, b) => a.latest.price - b.latest.price);
 
-                html += `<div class="product-card">`;
+                // Collect all history across stores
+                const allHistory = [];
+                for (const { store, all } of storeEntries) {
+                    for (const entry of all) {
+                        allHistory.push({ store, price: entry.price, date: entry.date });
+                    }
+                }
+                allHistory.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+
+                html += `<div class="product-card" onclick="this.querySelector('.history').classList.toggle('open')">`;
                 html += `<div class="product-name">${escapeHtml(product.full_name)}</div>`;
-                for (const entry of entries) {
+                for (const { store, latest, prev } of storeEntries) {
+                    let trendHtml = '';
+                    if (prev) {
+                        const diff = latest.price - prev.price;
+                        if (diff > 0.005) {
+                            trendHtml = `<span class="trend-up">&#9650; +£${diff.toFixed(2)}</span>`;
+                        } else if (diff < -0.005) {
+                            trendHtml = `<span class="trend-down">&#9660; -£${Math.abs(diff).toFixed(2)}</span>`;
+                        }
+                    }
                     html += `<div class="price-row">
-                        <span class="store">${escapeHtml(entry.store)}</span>
-                        <span class="price">&pound;${entry.price.toFixed(2)}</span>
-                        <span class="date">${entry.date || 'N/A'}</span>
+                        <span class="store">${escapeHtml(store)}</span>
+                        <span class="price">&pound;${latest.price.toFixed(2)} ${trendHtml}</span>
+                        <span class="date">${latest.date || 'N/A'}</span>
                     </div>`;
                 }
+                if (allHistory.length > 1) {
+                    html += `<div class="expand-hint">Tap for price history (${allHistory.length} records)</div>`;
+                }
+                html += `<div class="history">`;
+                html += `<div class="history-title">Price History</div>`;
+                for (const h of allHistory) {
+                    html += `<div class="history-row">
+                        <span>${h.date || 'N/A'}</span>
+                        <span>${escapeHtml(h.store)}</span>
+                        <span>&pound;${h.price.toFixed(2)}</span>
+                    </div>`;
+                }
+                html += `</div>`;
                 html += `</div>`;
             }
 
