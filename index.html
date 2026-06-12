@@ -10,7 +10,6 @@
     <link rel="manifest" href="./manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
     <link rel="apple-touch-icon" href="./icon-192.png">
-    <script src="https://accounts.google.com/gsi/client" async defer></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -77,112 +76,42 @@
             font-size: 0.85rem;
             margin-top: 8px;
         }
-        #login-section {
+        .nav-bar {
             display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 60vh;
+            gap: 8px;
+            margin-bottom: 16px;
         }
-        #login-section h1 {
-            margin-bottom: 24px;
-        }
-        #login-error {
-            color: #c00;
-            margin-top: 16px;
+        .nav-link {
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
             font-size: 0.9rem;
-        }
-        #app-section { display: none; }
-        .user-bar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            font-size: 0.8rem;
-            color: #888;
-        }
-        .logout-btn {
-            background: none;
+            font-weight: 500;
+            color: #4a90d9;
+            background: #fff;
             border: 1px solid #ddd;
-            border-radius: 4px;
-            padding: 4px 10px;
-            font-size: 0.8rem;
-            color: #666;
-            cursor: pointer;
+            transition: all 0.2s;
         }
-        .logout-btn:hover { background: #eee; }
+        .nav-link:hover { border-color: #4a90d9; }
+        .nav-link.active {
+            background: #4a90d9;
+            color: #fff;
+            border-color: #4a90d9;
+        }
     </style>
 </head>
 <body>
-    <div id="login-section">
-        <h1>Receipt Price Search</h1>
-        <div id="g_id_onload"
-             data-client_id="603358682422-ntunhrdkspak3ck58kdj3eo1rdjdhfk4.apps.googleusercontent.com"
-             data-callback="handleCredentialResponse"
-             data-auto_prompt="false">
-        </div>
-        <div class="g_id_signin"
-             data-type="standard"
-             data-size="large"
-             data-theme="outline"
-             data-text="sign_in_with"
-             data-shape="rectangular">
-        </div>
-        <div id="login-error"></div>
-    </div>
-
-    <div id="app-section">
-        <div class="user-bar">
-            <span id="user-email"></span>
-            <button class="logout-btn" onclick="logout()">Sign out</button>
-        </div>
-        <h1>Receipt Price Search</h1>
-        <input type="text" class="search-box" id="search" placeholder="Type product name (e.g. colgate, strawberries, noodle)...">
-        <div class="status" id="status">Loading receipts...</div>
-        <div class="hint" id="hint"></div>
-        <div class="results" id="results"></div>
-    </div>
+    <h1>Receipt Price Search</h1>
+    <nav class="nav-bar">
+        <a href="./index.html" class="nav-link active">Price Search</a>
+        <a href="./dashboard.html" class="nav-link">Dashboard</a>
+    </nav>
+    <input type="text" class="search-box" id="search" placeholder="Type product name (e.g. colgate, strawberries, noodle)..." autofocus>
+    <div class="status" id="status">Loading receipts...</div>
+    <div class="hint" id="hint"></div>
+    <div class="results" id="results"></div>
 
     <script>
-        const ALLOWED_EMAILS = ['simon.office.hk99@gmail.com', 'joanchung111@gmail.com'];
-
-        function handleCredentialResponse(response) {
-            const payload = JSON.parse(atob(response.credential.split('.')[1]));
-            const email = payload.email;
-
-            if (ALLOWED_EMAILS.includes(email.toLowerCase())) {
-                localStorage.setItem('receipt_user', email);
-                showApp(email);
-            } else {
-                document.getElementById('login-error').textContent =
-                    'Access denied. This account is not authorised.';
-            }
-        }
-
-        function showApp(email) {
-            document.getElementById('login-section').style.display = 'none';
-            document.getElementById('app-section').style.display = 'block';
-            document.getElementById('user-email').textContent = email;
-            document.getElementById('search').focus();
-            loadReceipts();
-        }
-
-        function logout() {
-            localStorage.removeItem('receipt_user');
-            google.accounts.id.disableAutoSelect();
-            document.getElementById('app-section').style.display = 'none';
-            document.getElementById('login-section').style.display = 'flex';
-        }
-
-        // Auto-login if previously authenticated
-        window.addEventListener('load', () => {
-            const saved = localStorage.getItem('receipt_user');
-            if (saved && ALLOWED_EMAILS.includes(saved.toLowerCase())) {
-                showApp(saved);
-            }
-        });
-
-        // Service worker
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('./sw.js');
         }
@@ -195,27 +124,24 @@
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const receipts = await resp.json();
 
-                allItems = [];
                 for (const receipt of receipts) {
                     const store = receipt.store || 'Unknown';
                     const date = receipt.date || '';
                     for (const item of (receipt.items || [])) {
-                        const qty = item.quantity || 1;
-                        const unitPrice = item.unit_price || +(item.price / qty).toFixed(2);
                         allItems.push({
                             name: item.name || '',
                             full_name: item.full_name || item.name || '',
                             price: item.price,
-                            unit_price: unitPrice,
-                            quantity: qty,
                             store: store,
                             date: date,
                         });
                     }
                 }
 
+                const totalItems = allItems.length;
+                const totalReceipts = receipts.length;
                 document.getElementById('status').textContent =
-                    `Loaded ${allItems.length} items from ${receipts.length} receipt(s)`;
+                    `Loaded ${totalItems} items from ${totalReceipts} receipt(s)`;
                 document.getElementById('hint').textContent =
                     'Start typing to search...';
             } catch (e) {
@@ -254,7 +180,7 @@
                 }
                 const storeKey = item.store;
                 if (!grouped[key].stores[storeKey] || item.date > grouped[key].stores[storeKey].date) {
-                    grouped[key].stores[storeKey] = { unit_price: item.unit_price, quantity: item.quantity, price: item.price, date: item.date };
+                    grouped[key].stores[storeKey] = { price: item.price, date: item.date };
                 }
             }
 
@@ -262,15 +188,14 @@
             for (const [key, product] of Object.entries(grouped)) {
                 const entries = Object.entries(product.stores)
                     .map(([store, data]) => ({ store, ...data }))
-                    .sort((a, b) => a.unit_price - b.unit_price);
+                    .sort((a, b) => a.price - b.price);
 
                 html += `<div class="product-card">`;
                 html += `<div class="product-name">${escapeHtml(product.full_name)}</div>`;
                 for (const entry of entries) {
-                    const qtyInfo = entry.quantity > 1 ? ` (x${entry.quantity} = &pound;${entry.price.toFixed(2)})` : '';
                     html += `<div class="price-row">
                         <span class="store">${escapeHtml(entry.store)}</span>
-                        <span class="price">&pound;${entry.unit_price.toFixed(2)}${qtyInfo}</span>
+                        <span class="price">&pound;${entry.price.toFixed(2)}</span>
                         <span class="date">${entry.date || 'N/A'}</span>
                     </div>`;
                 }
@@ -289,6 +214,8 @@
         document.getElementById('search').addEventListener('input', (e) => {
             search(e.target.value.trim());
         });
+
+        loadReceipts();
     </script>
 </body>
 </html>
