@@ -191,6 +191,9 @@
             <label>Period:
                 <select id="period"></select>
             </label>
+            <label>Store:
+                <select id="storeFilter"></select>
+            </label>
         </div>
         <div class="table-wrapper">
             <table>
@@ -265,6 +268,20 @@
             } else if (sortedYears.length > 0) {
                 select.value = sortedYears[0];
             }
+        }
+
+        function buildStoreOptions() {
+            const select = document.getElementById('storeFilter');
+            const stores = new Set();
+            for (const r of receipts) {
+                stores.add(normalizeStore(r.store || 'Unknown'));
+            }
+            const sorted = [...stores].sort();
+            let html = '<option value="all">All Stores</option>';
+            for (const s of sorted) {
+                html += `<option value="${s}">${s}</option>`;
+            }
+            select.innerHTML = html;
         }
 
         function updateSummary(period) {
@@ -349,7 +366,11 @@
         function renderTopProducts() {
             const sortBy = document.getElementById('sortBy').value;
             const period = document.getElementById('period').value;
-            const filtered = filterByPeriod(receipts, period);
+            const storeFilter = document.getElementById('storeFilter').value;
+            let filtered = filterByPeriod(receipts, period);
+            if (storeFilter !== 'all') {
+                filtered = filtered.filter(r => normalizeStore(r.store) === storeFilter);
+            }
 
             const products = {};
             for (const r of filtered) {
@@ -422,6 +443,7 @@
                     `${receipts.length} receipts loaded`;
 
                 buildPeriodOptions();
+                buildStoreOptions();
                 updateSummary(document.getElementById('period').value);
                 renderTrendChart();
                 renderTopProducts();
@@ -432,6 +454,7 @@
 
         document.getElementById('sortBy').addEventListener('change', renderTopProducts);
         document.getElementById('period').addEventListener('change', refresh);
+        document.getElementById('storeFilter').addEventListener('change', renderTopProducts);
         document.getElementById('topStores').addEventListener('change', renderTrendChart);
 
         init();
