@@ -1,5 +1,5 @@
-const CACHE_NAME = 'receipts-v1';
-const SHELL_FILES = ['./index.html', './manifest.json'];
+const CACHE_NAME = 'receipts-v2';
+const SHELL_FILES = ['./index.html', './dashboard.html', './manifest.json'];
 
 self.addEventListener('install', (e) => {
     e.waitUntil(
