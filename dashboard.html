@@ -260,7 +260,9 @@
                 html += `<option value="${m}">${label}</option>`;
             }
             select.innerHTML = html;
-            if (!hasCurrentYear && sortedYears.length > 0) {
+            if (hasCurrentYear) {
+                select.value = cy;
+            } else if (sortedYears.length > 0) {
                 select.value = sortedYears[0];
             }
         }
