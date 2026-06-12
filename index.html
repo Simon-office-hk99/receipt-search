@@ -74,6 +74,12 @@
         .history-title { font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 6px; }
         .history-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 0.8rem; color: #666; border-bottom: 1px solid #f8f8f8; }
         .history-row:last-child { border-bottom: none; }
+        .categories { display: flex; gap: 8px; overflow-x: auto; padding: 8px 0; margin-bottom: 12px; -webkit-overflow-scrolling: touch; }
+        .cat-chip { padding: 6px 12px; border-radius: 16px; font-size: 0.8rem; white-space: nowrap; border: 1px solid #ddd; background: #fff; color: #555; cursor: pointer; transition: all 0.2s; }
+        .cat-chip:hover { border-color: #4a90d9; }
+        .cat-chip.active { background: #4a90d9; color: #fff; border-color: #4a90d9; }
+        .cat-chip .count { font-size: 0.7rem; color: #999; margin-left: 4px; }
+        .cat-chip.active .count { color: rgba(255,255,255,0.7); }
         .no-results {
             text-align: center;
             color: #888;
@@ -115,6 +121,7 @@
         <a href="./index.html" class="nav-link active">Price Search</a>
         <a href="./dashboard.html" class="nav-link">Dashboard</a>
     </nav>
+    <div class="categories" id="categories"></div>
     <input type="text" class="search-box" id="search" placeholder="Type product name (e.g. colgate, strawberries, noodle)..." autofocus>
     <div class="status" id="status">Loading receipts...</div>
     <div class="hint" id="hint"></div>
@@ -125,63 +132,91 @@
             navigator.serviceWorker.register('./sw.js');
         }
 
+        const CATEGORIES = {
+            'Meat & Seafood': /\b(beef|pork|chicken|prawn|shrimp|salmon|fish|meatball|tendon|sausage|ribs|ham|mince|pluma|iberico|seafood)\b/i,
+            'Noodles & Rice': /\b(noodle|ramen|udon|vermicelli|soba|pho|yee mein|e-fu|chapagetti|jjajang)\b/i,
+            'Snacks & Crisps': /\b(chips?|crisps?|cookie|biscuit|wafer|mochi|snack|toffee|pringles|pastilles|nugget|walkers|kettle|grafschafter|sticks|choco pie)\b/i,
+            'Frozen': /\b(frozen|gyoza|dumpling|wonton|ice cream|ice lollies?|lollies)\b/i,
+            'Dairy & Eggs': /\b(egg|milk|yogurt|cheese|cream|butter)\b/i,
+            'Fruit & Veg': /\b(strawberr|peach|banana|mango|pear|mushroom|lettuce|spinach|potato|salad|vegetable|coriander|mooli|tomato|raspberr|grape|sweet potato|enoki)\b/i,
+            'Drinks': /\b(tea|cola|juice|lemonade|drink|water|press[eé]|sangaria)\b/i,
+            'Bakery & Dessert': /\b(bread|cake|pie|trifle|cheesecake|loaf|battenberg|madeleine|pizza)\b/i,
+            'Condiments & Cooking': /\b(sauce|oil|mayonnaise|starch|flour|sugar|seasoning|soup mix|vinegar|garlic|bean garlic)\b/i,
+            'Health & Personal': /\b(vitamin|toothpaste|collagen|tablet|capsule|hand wash|toner|pantyliner|turmeric|glucosamine)\b/i,
+            'Household': /\b(toilet|baking paper|clean|gel)\b/i,
+            'Asian Groceries': /\b(tofu|beancurd|seaweed|oolong|haw flakes|tapioca|barley|rock sugar)\b/i,
+        };
+
         let allItems = [];
+        let activeCategory = 'all';
 
-        async function loadReceipts() {
-            try {
-                const resp = await fetch('https://gist.githubusercontent.com/Simon-office-hk99/ad915999b3213f53cfaba93060d2351e/raw/receipts.json');
-                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-                const receipts = await resp.json();
-
-                for (const receipt of receipts) {
-                    const store = receipt.store || 'Unknown';
-                    const date = receipt.date || '';
-                    for (const item of (receipt.items || [])) {
-                        allItems.push({
-                            name: item.name || '',
-                            full_name: item.full_name || item.name || '',
-                            price: item.unit_price || item.price,
-                            store: store,
-                            date: date,
-                        });
-                    }
-                }
-
-                const totalItems = allItems.length;
-                const totalReceipts = receipts.length;
-                document.getElementById('status').textContent =
-                    `Loaded ${totalItems} items from ${totalReceipts} receipt(s)`;
-                document.getElementById('hint').textContent =
-                    'Start typing to search...';
-            } catch (e) {
-                document.getElementById('status').textContent =
-                    `Error loading receipts: ${e.message}`;
+        function categorize(name) {
+            for (const [cat, regex] of Object.entries(CATEGORIES)) {
+                if (regex.test(name)) return cat;
             }
+            return 'Other';
         }
 
-        function search(query) {
+        function buildCategoryChips() {
+            const counts = { all: allItems.length };
+            for (const item of allItems) {
+                counts[item.category] = (counts[item.category] || 0) + 1;
+            }
+            const cats = Object.keys(CATEGORIES).filter(c => counts[c]);
+            if (counts['Other']) cats.push('Other');
+
+            let html = `<span class="cat-chip active" data-cat="all">All<span class="count">${counts.all}</span></span>`;
+            for (const cat of cats) {
+                html += `<span class="cat-chip" data-cat="${cat}">${cat}<span class="count">${counts[cat]}</span></span>`;
+            }
+            document.getElementById('categories').innerHTML = html;
+
+            document.querySelectorAll('.cat-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+                    chip.classList.add('active');
+                    activeCategory = chip.dataset.cat;
+                    filterAndSearch();
+                });
+            });
+        }
+
+        function filterAndSearch() {
             const resultsDiv = document.getElementById('results');
             const hintDiv = document.getElementById('hint');
 
-            if (!query || query.length < 2) {
+            let items = allItems;
+            if (activeCategory !== 'all') {
+                items = items.filter(i => i.category === activeCategory);
+            }
+
+            const query = document.getElementById('search').value.trim();
+            if (query.length >= 2) {
+                const q = query.toLowerCase();
+                items = items.filter(i =>
+                    i.full_name.toLowerCase().includes(q) ||
+                    i.name.toLowerCase().includes(q)
+                );
+            } else if (activeCategory === 'all') {
                 resultsDiv.innerHTML = '';
-                hintDiv.textContent = query.length === 0 ? 'Start typing to search...' : 'Type at least 2 characters...';
+                hintDiv.textContent = query.length === 0 ? 'Start typing to search or select a category...' : 'Type at least 2 characters...';
                 return;
             }
+
             hintDiv.textContent = '';
 
-            const q = query.toLowerCase();
-            const matches = allItems.filter(item =>
-                item.full_name.toLowerCase().includes(q) ||
-                item.name.toLowerCase().includes(q)
-            );
-
-            if (matches.length === 0) {
+            if (items.length === 0) {
                 resultsDiv.innerHTML = '<div class="no-results">No matching products found</div>';
                 return;
             }
 
-            // Group by product, keep ALL entries per store (sorted newest first)
+            renderResults(items);
+        }
+
+        function renderResults(matches) {
+            const resultsDiv = document.getElementById('results');
+
+            // Group by product, keep ALL entries per store
             const grouped = {};
             for (const item of matches) {
                 const key = item.full_name.toUpperCase();
@@ -208,7 +243,6 @@
                     .map(([store, entries]) => ({ store, latest: entries[0], prev: entries[1] || null, all: entries }))
                     .sort((a, b) => a.latest.price - b.latest.price);
 
-                // Collect all history across stores
                 const allHistory = [];
                 for (const { store, all } of storeEntries) {
                     for (const entry of all) {
@@ -260,9 +294,40 @@
             return div.innerHTML;
         }
 
-        document.getElementById('search').addEventListener('input', (e) => {
-            search(e.target.value.trim());
-        });
+        async function loadReceipts() {
+            try {
+                const resp = await fetch('https://gist.githubusercontent.com/Simon-office-hk99/ad915999b3213f53cfaba93060d2351e/raw/receipts.json');
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const receipts = await resp.json();
+
+                for (const receipt of receipts) {
+                    const store = receipt.store || 'Unknown';
+                    const date = receipt.date || '';
+                    for (const item of (receipt.items || [])) {
+                        const fullName = item.full_name || item.name || '';
+                        allItems.push({
+                            name: item.name || '',
+                            full_name: fullName,
+                            price: item.unit_price || item.price,
+                            store: store,
+                            date: date,
+                            category: categorize(fullName),
+                        });
+                    }
+                }
+
+                document.getElementById('status').textContent =
+                    `${allItems.length} items from ${receipts.length} receipt(s)`;
+                document.getElementById('hint').textContent =
+                    'Start typing to search or select a category...';
+                buildCategoryChips();
+            } catch (e) {
+                document.getElementById('status').textContent =
+                    `Error loading receipts: ${e.message}`;
+            }
+        }
+
+        document.getElementById('search').addEventListener('input', () => filterAndSearch());
 
         loadReceipts();
     </script>
