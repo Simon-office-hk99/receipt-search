@@ -187,13 +187,24 @@
     </div>
 
     <script>
-        const ALLOWED_EMAILS = ['simon.office.hk99@gmail.com', 'joanchung111@gmail.com'];
+        let allowedEmails = [];
 
-        function handleCredentialResponse(response) {
+        async function fetchAllowedUsers() {
+            try {
+                const resp = await fetch('https://gist.githubusercontent.com/Simon-office-hk99/ad915999b3213f53cfaba93060d2351e/raw/allowed_users.json');
+                allowedEmails = (await resp.json()).map(e => e.toLowerCase());
+            } catch (e) {
+                allowedEmails = [];
+            }
+        }
+
+        async function handleCredentialResponse(response) {
             const payload = JSON.parse(atob(response.credential.split('.')[1]));
             const email = payload.email;
 
-            if (ALLOWED_EMAILS.includes(email.toLowerCase())) {
+            if (allowedEmails.length === 0) await fetchAllowedUsers();
+
+            if (allowedEmails.includes(email.toLowerCase())) {
                 localStorage.setItem('receipt_user', email);
                 showApp(email);
             } else {
@@ -217,9 +228,10 @@
             document.getElementById('login-section').style.display = 'flex';
         }
 
-        window.addEventListener('load', () => {
+        window.addEventListener('load', async () => {
+            await fetchAllowedUsers();
             const saved = localStorage.getItem('receipt_user');
-            if (saved && ALLOWED_EMAILS.includes(saved.toLowerCase())) {
+            if (saved && allowedEmails.includes(saved.toLowerCase())) {
                 showApp(saved);
             }
         });
