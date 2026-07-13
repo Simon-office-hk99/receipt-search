@@ -12,7 +12,6 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -239,9 +238,9 @@
     </div>
 
     <div class="section">
-        <div class="section-title">Monthly Spending by Category (Last 6 Months)</div>
+        <div class="section-title">Total Monthly Spending (Last 6 Months)</div>
         <div class="chart-container">
-            <canvas id="categoryChart"></canvas>
+            <canvas id="monthlySpendChart"></canvas>
         </div>
     </div>
 
@@ -336,7 +335,7 @@
 
         let receipts = [];
         let trendChart = null;
-        let categoryChart = null;
+        let monthlySpendChart = null;
 
         function normalizeStore(name) {
             const map = { 'Marks & Spencer': 'M&S', 'marks & spencer': 'M&S' };
@@ -490,124 +489,66 @@
             });
         }
 
-        function renderCategoryChart() {
+        function renderMonthlySpendChart() {
             const lastSixMonths = getLastSixMonthsIncludingCurrent();
-            const monthlyData = {};
+            const monthlyTotals = {};
 
-            // Group spending by month and category (from item names)
+            // Calculate total spending for each month
             for (const r of receipts) {
                 const month = r.date ? r.date.substring(0, 7) : null;
                 if (!month || !lastSixMonths.includes(month)) continue;
-
-                for (const item of (r.items || [])) {
-                    // Extract category from item name (before first space or use item name)
-                    const itemName = item.full_name || item.name || 'Unknown';
-                    const category = extractCategory(itemName);
-                    
-                    if (!monthlyData[month]) monthlyData[month] = {};
-                    monthlyData[month][category] = (monthlyData[month][category] || 0) + (item.price || 0);
-                }
+                
+                monthlyTotals[month] = (monthlyTotals[month] || 0) + (r.total || 0);
             }
 
-            // Get all unique categories across the 6 months
-            const allCategories = new Set();
-            for (const month of lastSixMonths) {
-                if (monthlyData[month]) {
-                    Object.keys(monthlyData[month]).forEach(c => allCategories.add(c));
-                }
-            }
-            const categoriesList = [...allCategories].sort();
-            const categoryColorMap = {};
-            categoriesList.forEach((c, i) => { categoryColorMap[c] = STORE_COLORS[i % STORE_COLORS.length]; });
-
-            // Calculate monthly totals for data labels
-            const monthlyTotals = lastSixMonths.map(m => {
-                return Object.values(monthlyData[m] || {}).reduce((sum, val) => sum + val, 0);
-            });
-
-            // Create datasets for each category
-            const datasets = categoriesList.map(category => ({
-                label: category,
-                data: lastSixMonths.map(m => +(monthlyData[m]?.[category] || 0).toFixed(2)),
-                backgroundColor: categoryColorMap[category],
-            }));
-
+            // Create data array for the 6 months
+            const data = lastSixMonths.map(m => +(monthlyTotals[m] || 0).toFixed(2));
+            
             const labels = lastSixMonths.map(m => {
                 const d = new Date(m + '-01');
                 return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short' });
             });
 
-            if (categoryChart) categoryChart.destroy();
-            
-            // Register the datalabels plugin
-            Chart.register(ChartDataLabels);
-
-            categoryChart = new Chart(document.getElementById('categoryChart'), {
-                type: 'bar',
-                data: { labels, datasets },
+            if (monthlySpendChart) monthlySpendChart.destroy();
+            monthlySpendChart = new Chart(document.getElementById('monthlySpendChart'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [{
+                        label: 'Monthly Spend',
+                        data,
+                        borderColor: '#4a90d9',
+                        backgroundColor: 'rgba(74, 144, 217, 0.1)',
+                        tension: 0.3,
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        pointBackgroundColor: '#4a90d9',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        fill: true,
+                    }]
+                },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    indexAxis: undefined,
+                    interaction: { mode: 'index', intersect: false },
                     plugins: {
                         legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } },
                         tooltip: {
                             callbacks: {
-                                label: ctx => `${ctx.dataset.label}: £${ctx.raw.toFixed(2)}`
+                                label: ctx => `£${ctx.raw.toFixed(2)}`
                             }
-                        },
-                        datalabels: {
-                            display: true,
-                            align: 'top',
-                            anchor: 'end',
-                            font: {
-                                weight: 'bold',
-                                size: 11
-                            },
-                            color: '#333',
-                            formatter: (value, context) => {
-                                // Show total at the top of each bar
-                                const index = context.dataIndex;
-                                return '£' + monthlyTotals[index].toFixed(2);
-                            },
-                            offset: 5
                         }
                     },
                     scales: {
                         x: {},
                         y: {
-                            stacked: true,
                             beginAtZero: true,
                             ticks: { callback: v => '£' + v }
                         }
                     }
                 }
             });
-        }
-
-        function extractCategory(itemName) {
-            // Simple category extraction: use first word or common categories
-            const name = itemName.toLowerCase().trim();
-            const categories = {
-                'bakery': ['bread', 'cake', 'pastry', 'bun', 'croissant'],
-                'dairy': ['milk', 'cheese', 'yogurt', 'butter', 'cream'],
-                'meat': ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'ham'],
-                'produce': ['apple', 'banana', 'orange', 'lettuce', 'tomato', 'carrot', 'potato', 'vegetable', 'fruit'],
-                'beverages': ['juice', 'cola', 'water', 'tea', 'coffee', 'wine', 'beer', 'drink'],
-                'snacks': ['chip', 'crisp', 'chocolate', 'candy', 'bar', 'biscuit'],
-                'frozen': ['frozen', 'ice cream', 'pizza'],
-                'pantry': ['pasta', 'rice', 'cereal', 'oil', 'sauce', 'can']
-            };
-
-            for (const [category, keywords] of Object.entries(categories)) {
-                if (keywords.some(keyword => name.includes(keyword))) {
-                    return category.charAt(0).toUpperCase() + category.slice(1);
-                }
-            }
-
-            // If no category matches, use first word
-            const firstWord = name.split(/\s+/)[0];
-            return firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
         }
 
         function renderTopProducts() {
@@ -693,7 +634,7 @@
                 buildStoreOptions();
                 updateSummary(document.getElementById('period').value);
                 renderTrendChart();
-                renderCategoryChart();
+                renderMonthlySpendChart();
                 renderTopProducts();
             } catch (e) {
                 document.getElementById('status').textContent = `Error: ${e.message}`;
