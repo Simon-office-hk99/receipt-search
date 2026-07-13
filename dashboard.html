@@ -238,6 +238,13 @@
     </div>
 
     <div class="section">
+        <div class="section-title">Monthly Spending by Category (Last 6 Months)</div>
+        <div class="chart-container">
+            <canvas id="categoryChart"></canvas>
+        </div>
+    </div>
+
+    <div class="section">
         <div class="section-title">Top Products</div>
         <div class="controls">
             <label>Sort by:
@@ -328,6 +335,7 @@
 
         let receipts = [];
         let trendChart = null;
+        let categoryChart = null;
 
         function normalizeStore(name) {
             const map = { 'Marks & Spencer': 'M&S', 'marks & spencer': 'M&S' };
@@ -341,6 +349,16 @@
         function filterByPeriod(data, period) {
             if (period === 'all') return data;
             return data.filter(r => r.date && r.date.startsWith(period));
+        }
+
+        function getLastSixMonths() {
+            const months = [];
+            const now = new Date();
+            for (let i = 5; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                months.push(d.toISOString().substring(0, 7));
+            }
+            return months;
         }
 
         function buildPeriodOptions() {
@@ -471,6 +489,71 @@
             });
         }
 
+        function renderCategoryChart() {
+            const lastSixMonths = getLastSixMonths();
+            const monthlyData = {};
+
+            // Group spending by month and store
+            for (const r of receipts) {
+                const month = r.date ? r.date.substring(0, 7) : null;
+                if (!month || !lastSixMonths.includes(month)) continue;
+
+                const store = normalizeStore(r.store || 'Unknown');
+                if (!monthlyData[month]) monthlyData[month] = {};
+                monthlyData[month][store] = (monthlyData[month][store] || 0) + (r.total || 0);
+            }
+
+            // Get all unique stores across the 6 months
+            const allStores = new Set();
+            for (const month of lastSixMonths) {
+                if (monthlyData[month]) {
+                    Object.keys(monthlyData[month]).forEach(s => allStores.add(s));
+                }
+            }
+            const storesList = [...allStores].sort();
+            const storeColorMap = {};
+            storesList.forEach((s, i) => { storeColorMap[s] = STORE_COLORS[i % STORE_COLORS.length]; });
+
+            // Create datasets for each store
+            const datasets = storesList.map(store => ({
+                label: store,
+                data: lastSixMonths.map(m => +(monthlyData[m]?.[store] || 0).toFixed(2)),
+                backgroundColor: storeColorMap[store],
+            }));
+
+            const labels = lastSixMonths.map(m => {
+                const d = new Date(m + '-01');
+                return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short' });
+            });
+
+            if (categoryChart) categoryChart.destroy();
+            categoryChart = new Chart(document.getElementById('categoryChart'), {
+                type: 'bar',
+                data: { labels, datasets },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    indexAxis: undefined,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 14, font: { size: 11 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => `${ctx.dataset.label}: £${ctx.raw.toFixed(2)}`
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {},
+                        y: {
+                            stacked: true,
+                            beginAtZero: true,
+                            ticks: { callback: v => '£' + v }
+                        }
+                    }
+                }
+            });
+        }
+
         function renderTopProducts() {
             const sortBy = document.getElementById('sortBy').value;
             const period = document.getElementById('period').value;
@@ -554,6 +637,7 @@
                 buildStoreOptions();
                 updateSummary(document.getElementById('period').value);
                 renderTrendChart();
+                renderCategoryChart();
                 renderTopProducts();
             } catch (e) {
                 document.getElementById('status').textContent = `Error: ${e.message}`;
