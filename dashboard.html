@@ -461,7 +461,7 @@
             const datasets = topStores.map(store => ({
                 label: store,
                 //data: months.map(m => +(monthlyData[m][store] || 0).toFixed(2)),
-                data: lastSixMonths.map(m => +(monthlyTotals[m] || 0).toFixed(2));
+                data: lastSixMonths.map(m => +(monthlyTotals[m] || 0).toFixed(2)),
                 borderColor: storeColorMap[store],
                 backgroundColor: storeColorMap[store],
                 tension: 0.3,
