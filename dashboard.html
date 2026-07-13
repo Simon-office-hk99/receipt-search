@@ -434,14 +434,17 @@
         }
 
         function renderTrendChart() {
+            const lastSixMonths = getLastSixMonthsIncludingCurrent();
             const monthlyData = {};
             for (const r of receipts) {
                 const month = r.date ? r.date.substring(0, 7) : 'Unknown';
                 const store = normalizeStore(r.store || 'Unknown');
+                if (!month || !lastSixMonths.includes(month)) continue;
+                
                 if (!monthlyData[month]) monthlyData[month] = {};
                 monthlyData[month][store] = (monthlyData[month][store] || 0) + (r.total || 0);
             }
-
+            
             const months = Object.keys(monthlyData).sort();
             const allStores = [...new Set(months.flatMap(m => Object.keys(monthlyData[m])))];
             // Rank stores by total spend and keep top 5
@@ -457,7 +460,8 @@
 
             const datasets = topStores.map(store => ({
                 label: store,
-                data: months.map(m => +(monthlyData[m][store] || 0).toFixed(2)),
+                //data: months.map(m => +(monthlyData[m][store] || 0).toFixed(2)),
+                data: lastSixMonths.map(m => +(monthlyTotals[m] || 0).toFixed(2));
                 borderColor: storeColorMap[store],
                 backgroundColor: storeColorMap[store],
                 tension: 0.3,
@@ -465,11 +469,15 @@
                 pointHoverRadius: 6,
                 fill: false,
             }));
-
-            const labels = months.map(m => {
+            
+            /*const labels = months.map(m => {
                 const d = new Date(m + '-01');
                 return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short' });
-            });
+            });*/
+            const labels = lastSixMonths.map(m => {
+                const d = new Date(m + '-01');
+                return d.toLocaleDateString('en-GB', { year: 'numeric', month: 'short' });
+            });            
 
             if (trendChart) trendChart.destroy();
             trendChart = new Chart(document.getElementById('trendChart'), {
