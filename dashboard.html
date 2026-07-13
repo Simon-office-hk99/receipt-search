@@ -357,6 +357,7 @@
             for (let i = 5; i >= 0; i--) {
                 const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
                 months.push(d.toISOString().substring(0, 7));
+                console.log(months[i]);
             }
             return months;
         }
