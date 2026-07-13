@@ -51,6 +51,23 @@
         .receipt-total { font-weight: 600; color: #2a7a2a; font-size: 0.95rem; }
         .receipt-detail { display: none; margin-top: 12px; border-top: 1px solid #eee; padding-top: 10px; }
         .receipt-detail.open { display: block; }
+        .receipt-issue-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 6px 12px;
+            background: #f0f7ff;
+            border: 1px solid #4a90d9;
+            border-radius: 6px;
+            color: #4a90d9;
+            text-decoration: none;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .receipt-issue-link:hover {
+            background: #4a90d9;
+            color: #fff;
+        }
         .item-row {
             display: flex; justify-content: space-between; align-items: center;
             padding: 5px 0; font-size: 0.8rem; border-bottom: 1px solid #f8f8f8;
@@ -267,6 +284,17 @@
                     html += `<span class="item-price">£${price.toFixed(2)}</span>`;
                     html += `</div>`;
                 }
+                // Add issue link if issue_number exists
+                if (r.issue_number) {
+                    html += `<a href="https://github.com/Simon-office-hk99/barclays-offers/issues/${r.issue_number}" 
+                                class="receipt-issue-link" 
+                                onclick="event.stopPropagation()" 
+                                target="_blank">
+                                View Receipt Photo (#${r.issue_number})
+                             </a>`;
+                }
+                html += `</div>`;
+                html += `</div>`;                
                 html += `</div>`;
                 html += `</div>`;
             }
