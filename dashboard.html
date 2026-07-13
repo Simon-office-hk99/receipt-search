@@ -12,6 +12,7 @@
     <link rel="apple-touch-icon" href="./icon-192.png">
     <script src="https://accounts.google.com/gsi/client" async defer></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2/dist/chartjs-plugin-datalabels.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -351,7 +352,7 @@
             return data.filter(r => r.date && r.date.startsWith(period));
         }
 
-        function getLastSixMonths() {
+        function getLastSixMonthsIncludingCurrent() {
             const months = [];
             const now = new Date();
             for (let i = 5; i >= 0; i--) {
@@ -490,35 +491,45 @@
         }
 
         function renderCategoryChart() {
-            const lastSixMonths = getLastSixMonths();
+            const lastSixMonths = getLastSixMonthsIncludingCurrent();
             const monthlyData = {};
 
-            // Group spending by month and store
+            // Group spending by month and category (from item names)
             for (const r of receipts) {
                 const month = r.date ? r.date.substring(0, 7) : null;
                 if (!month || !lastSixMonths.includes(month)) continue;
 
-                const store = normalizeStore(r.store || 'Unknown');
-                if (!monthlyData[month]) monthlyData[month] = {};
-                monthlyData[month][store] = (monthlyData[month][store] || 0) + (r.total || 0);
-            }
-
-            // Get all unique stores across the 6 months
-            const allStores = new Set();
-            for (const month of lastSixMonths) {
-                if (monthlyData[month]) {
-                    Object.keys(monthlyData[month]).forEach(s => allStores.add(s));
+                for (const item of (r.items || [])) {
+                    // Extract category from item name (before first space or use item name)
+                    const itemName = item.full_name || item.name || 'Unknown';
+                    const category = extractCategory(itemName);
+                    
+                    if (!monthlyData[month]) monthlyData[month] = {};
+                    monthlyData[month][category] = (monthlyData[month][category] || 0) + (item.price || 0);
                 }
             }
-            const storesList = [...allStores].sort();
-            const storeColorMap = {};
-            storesList.forEach((s, i) => { storeColorMap[s] = STORE_COLORS[i % STORE_COLORS.length]; });
 
-            // Create datasets for each store
-            const datasets = storesList.map(store => ({
-                label: store,
-                data: lastSixMonths.map(m => +(monthlyData[m]?.[store] || 0).toFixed(2)),
-                backgroundColor: storeColorMap[store],
+            // Get all unique categories across the 6 months
+            const allCategories = new Set();
+            for (const month of lastSixMonths) {
+                if (monthlyData[month]) {
+                    Object.keys(monthlyData[month]).forEach(c => allCategories.add(c));
+                }
+            }
+            const categoriesList = [...allCategories].sort();
+            const categoryColorMap = {};
+            categoriesList.forEach((c, i) => { categoryColorMap[c] = STORE_COLORS[i % STORE_COLORS.length]; });
+
+            // Calculate monthly totals for data labels
+            const monthlyTotals = lastSixMonths.map(m => {
+                return Object.values(monthlyData[m] || {}).reduce((sum, val) => sum + val, 0);
+            });
+
+            // Create datasets for each category
+            const datasets = categoriesList.map(category => ({
+                label: category,
+                data: lastSixMonths.map(m => +(monthlyData[m]?.[category] || 0).toFixed(2)),
+                backgroundColor: categoryColorMap[category],
             }));
 
             const labels = lastSixMonths.map(m => {
@@ -527,6 +538,10 @@
             });
 
             if (categoryChart) categoryChart.destroy();
+            
+            // Register the datalabels plugin
+            Chart.register(ChartDataLabels);
+
             categoryChart = new Chart(document.getElementById('categoryChart'), {
                 type: 'bar',
                 data: { labels, datasets },
@@ -540,6 +555,22 @@
                             callbacks: {
                                 label: ctx => `${ctx.dataset.label}: £${ctx.raw.toFixed(2)}`
                             }
+                        },
+                        datalabels: {
+                            display: true,
+                            align: 'top',
+                            anchor: 'end',
+                            font: {
+                                weight: 'bold',
+                                size: 11
+                            },
+                            color: '#333',
+                            formatter: (value, context) => {
+                                // Show total at the top of each bar
+                                const index = context.dataIndex;
+                                return '£' + monthlyTotals[index].toFixed(2);
+                            },
+                            offset: 5
                         }
                     },
                     scales: {
@@ -552,6 +583,31 @@
                     }
                 }
             });
+        }
+
+        function extractCategory(itemName) {
+            // Simple category extraction: use first word or common categories
+            const name = itemName.toLowerCase().trim();
+            const categories = {
+                'bakery': ['bread', 'cake', 'pastry', 'bun', 'croissant'],
+                'dairy': ['milk', 'cheese', 'yogurt', 'butter', 'cream'],
+                'meat': ['chicken', 'beef', 'pork', 'lamb', 'turkey', 'ham'],
+                'produce': ['apple', 'banana', 'orange', 'lettuce', 'tomato', 'carrot', 'potato', 'vegetable', 'fruit'],
+                'beverages': ['juice', 'cola', 'water', 'tea', 'coffee', 'wine', 'beer', 'drink'],
+                'snacks': ['chip', 'crisp', 'chocolate', 'candy', 'bar', 'biscuit'],
+                'frozen': ['frozen', 'ice cream', 'pizza'],
+                'pantry': ['pasta', 'rice', 'cereal', 'oil', 'sauce', 'can']
+            };
+
+            for (const [category, keywords] of Object.entries(categories)) {
+                if (keywords.some(keyword => name.includes(keyword))) {
+                    return category.charAt(0).toUpperCase() + category.slice(1);
+                }
+            }
+
+            // If no category matches, use first word
+            const firstWord = name.split(/\s+/)[0];
+            return firstWord.charAt(0).toUpperCase() + firstWord.slice(1);
         }
 
         function renderTopProducts() {
